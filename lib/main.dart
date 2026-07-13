@@ -1,0 +1,386 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:camera/camera.dart';
+import 'package:flame/game.dart' hide Plane;
+import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
+import 'dart:async';
+import 'dart:io';
+import 'dart:math' as math;
+
+
+import 'motion_game_arena.dart';
+
+List<CameraDescription> cameras = [];
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  try {
+    cameras = await availableCameras();
+  } catch (e) {
+    // Emulator safe-guard
+  }
+  runApp(const WristTrackerApp());
+}
+
+class WristTrackerApp extends StatelessWidget {
+  const WristTrackerApp({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Pose Arena',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData.dark(),
+      home: const GameScreen(),
+    );
+  }
+}
+
+class GameScreen extends StatefulWidget {
+  const GameScreen({Key? key}) : super(key: key);
+  @override
+  State<GameScreen> createState() => _GameScreenState();
+}
+
+class _GameScreenState extends State<GameScreen> {
+  CameraController? _cameraController;
+  late final MotionGameArena _gameArena;
+  
+  final PoseDetector _poseDetector = PoseDetector(options: PoseDetectorOptions(
+    mode: PoseDetectionMode.stream,
+    model: PoseDetectionModel.base, // Using base model for low latency real-time performance
+  ));
+  
+  bool _isProcessingFrame = false;
+  CameraDescription? _frontCamera;
+  Size? _imageSize;
+
+  @override
+  void initState() {
+    super.initState();
+    _gameArena = MotionGameArena();
+    _initializePipeline();
+  }
+
+  Future<void> _initializePipeline() async {
+    if (cameras.isEmpty) return;
+    
+    _frontCamera = cameras.firstWhere(
+      (c) => c.lensDirection == CameraLensDirection.front,
+      orElse: () => cameras.first,
+    );
+
+    _cameraController = CameraController(
+      _frontCamera!,
+      ResolutionPreset.medium,
+      enableAudio: false,
+      imageFormatGroup: Platform.isAndroid ? ImageFormatGroup.nv21 : ImageFormatGroup.bgra8888,
+    );
+
+    await _cameraController!.initialize();
+
+    _cameraController!.startImageStream((CameraImage image) async {
+      if (_isProcessingFrame) return;
+      _isProcessingFrame = true;
+
+      try {
+        final inputImage = _inputImageFromCameraImage(image);
+        if (inputImage == null) return;
+
+        final List<Pose> poses = await _poseDetector.processImage(inputImage);
+        if (poses.isNotEmpty) {
+          _handlePoseResults(poses.first);
+        }
+      } catch (e) {
+        debugPrint("Vision pipeline error: $e");
+      } finally {
+        _isProcessingFrame = false;
+      }
+    });
+    
+    if (mounted) setState(() {});
+  }
+
+  InputImage? _inputImageFromCameraImage(CameraImage image) {
+    if (_frontCamera == null) return null;
+    final sensorOrientation = _frontCamera!.sensorOrientation;
+    
+    InputImageRotation rotation;
+    switch (sensorOrientation) {
+      case 90:
+        rotation = InputImageRotation.rotation90deg;
+        break;
+      case 180:
+        rotation = InputImageRotation.rotation180deg;
+        break;
+      case 270:
+        rotation = InputImageRotation.rotation270deg;
+        break;
+      default:
+        rotation = InputImageRotation.rotation0deg;
+    }
+
+    final format = Platform.isAndroid ? InputImageFormat.nv21 : InputImageFormat.bgra8888;
+
+    if (image.planes.isEmpty) return null;
+
+    final WriteBuffer allBytes = WriteBuffer();
+    for (final Plane plane in image.planes) {
+      allBytes.putUint8List(plane.bytes);
+    }
+    final bytes = allBytes.done().buffer.asUint8List();
+
+    _imageSize = Size(image.width.toDouble(), image.height.toDouble());
+
+    return InputImage.fromBytes(
+      bytes: bytes,
+      metadata: InputImageMetadata(
+        size: _imageSize!,
+        rotation: rotation,
+        format: format,
+        bytesPerRow: image.planes[0].bytesPerRow,
+      ),
+    );
+  }
+
+  void _handlePoseResults(Pose pose) {
+    if (_imageSize == null) return;
+    
+    final leftWrist = pose.landmarks[PoseLandmarkType.leftWrist];
+    final rightWrist = pose.landmarks[PoseLandmarkType.rightWrist];
+
+    final screenSize = MediaQuery.of(context).size;
+    
+    // Account for native rotation: image height maps to screen width space, image width to screen height space
+    final double inputWidth = _imageSize!.height;
+    final double inputHeight = _imageSize!.width;
+    
+    // Calculate the aspect ratio scale factor mirroring BoxFit.cover behavior
+    final double scale = math.max(screenSize.width / inputWidth, screenSize.height / inputHeight);
+    
+    // Determine coordinate offsets caused by overflowing crop areas
+    final double offsetX = (inputWidth * scale - screenSize.width) / 2;
+    final double offsetY = (inputHeight * scale - screenSize.height) / 2;
+    
+    _gameArena.updateFullPose(pose, scale, offsetX, offsetY, inputWidth);
+  }
+
+  @override
+  void dispose() {
+    _cameraController?.stopImageStream();
+    _cameraController?.dispose();
+    _poseDetector.close();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (_cameraController != null && _cameraController!.value.isInitialized)
+            CameraPreview(_cameraController!)
+          else
+            const Center(child: CircularProgressIndicator(color: Colors.cyan)),
+
+          GameWidget(
+            game: _gameArena,
+            overlayBuilderMap: {
+              'MainMenu': (context, MotionGameArena game) {
+                return Container(
+                  width: double.infinity,
+                  height: double.infinity,
+                  color: Colors.blueGrey.shade900, // Solid opaque background
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.sports_esports, size: 80, color: Colors.cyan),
+                        const SizedBox(height: 20),
+                        const Text('POSE ARENA', style: TextStyle(color: Colors.white, fontSize: 48, fontWeight: FontWeight.bold, letterSpacing: 2)),
+                        const SizedBox(height: 40),
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.cyan, 
+                            foregroundColor: Colors.black, 
+                            padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 20),
+                            elevation: 10,
+                          ),
+                          onPressed: () {
+                            game.overlays.remove('MainMenu');
+                            game.startCountdown();
+                          },
+                          child: const Text('START GAME', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+              'Countdown': (context, MotionGameArena game) {
+                return Center(
+                  child: ValueListenableBuilder<int>(
+                    valueListenable: game.countdownNotifier,
+                    builder: (context, value, child) {
+                      return Text(
+                        value > 0 ? '$value' : 'GO!',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 120,
+                          fontWeight: FontWeight.bold,
+                          shadows: [Shadow(color: Colors.black, blurRadius: 10, offset: Offset(2, 2))],
+                        ),
+                      );
+                    },
+                  ),
+                );
+              },
+              'AdBreak': (context, MotionGameArena game) {
+                return Center(
+                  child: Container(
+                    padding: const EdgeInsets.all(30),
+                    decoration: BoxDecoration(
+                      color: Colors.black87,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.cyan, width: 2),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text('STREAK BROKEN!', style: TextStyle(color: Colors.redAccent, fontSize: 36, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 15),
+                        Text('CURRENT SCORE: ${game.score}', style: const TextStyle(color: Colors.yellowAccent, fontSize: 24, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 30),
+                        ElevatedButton.icon(
+                          icon: const Icon(Icons.play_circle_fill, color: Colors.black),
+                          label: const Text('WATCH AD TO REVIVE', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15)),
+                          onPressed: () {
+                            game.overlays.remove('AdBreak');
+                            game.overlays.add('AdSimulation');
+                          },
+                        ),
+                        const SizedBox(height: 15),
+                        TextButton(
+                          onPressed: () {
+                            game.overlays.remove('AdBreak');
+                            game.overlays.add('GameOver');
+                          },
+                          child: const Text('No thanks, end game', style: TextStyle(color: Colors.white54, fontSize: 16)),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+              'AdSimulation': (context, MotionGameArena game) {
+                return AdSimulationWidget(game: game);
+              },
+              'GameOver': (context, MotionGameArena game) {
+                return Center(
+                  child: Container(
+                    padding: const EdgeInsets.all(40),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.9),
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: Colors.cyanAccent, width: 3),
+                      boxShadow: [
+                         BoxShadow(color: Colors.cyanAccent.withOpacity(0.5), blurRadius: 20, spreadRadius: 5),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text('OUT OF LIVES', style: TextStyle(color: Colors.redAccent, fontSize: 42, fontWeight: FontWeight.w900, letterSpacing: 2)),
+                        const SizedBox(height: 20),
+                        const Text('YOUR FINAL SCORE', style: TextStyle(color: Colors.white70, fontSize: 18, letterSpacing: 1)),
+                        Text('${game.score}', style: const TextStyle(color: Colors.yellowAccent, fontSize: 80, fontWeight: FontWeight.bold, shadows: [Shadow(color: Colors.black, blurRadius: 10)])),
+                        const SizedBox(height: 40),
+                        ElevatedButton.icon(
+                          icon: const Icon(Icons.refresh, size: 30),
+                          label: const Text('PLAY AGAIN', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.cyanAccent, 
+                            foregroundColor: Colors.black, 
+                            padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 20),
+                            elevation: 15,
+                          ),
+                          onPressed: () {
+                            game.overlays.remove('GameOver');
+                            game.resetGame();
+                          },
+                        ),
+                        const SizedBox(height: 20),
+                        TextButton(
+                          onPressed: () {
+                            game.overlays.remove('GameOver');
+                            game.overlays.add('MainMenu');
+                          },
+                          child: const Text('Main Menu', style: TextStyle(color: Colors.white54, fontSize: 18)),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            },
+            initialActiveOverlays: const ['MainMenu'],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class AdSimulationWidget extends StatefulWidget {
+  final MotionGameArena game;
+  const AdSimulationWidget({Key? key, required this.game}) : super(key: key);
+  @override
+  State<AdSimulationWidget> createState() => _AdSimulationWidgetState();
+}
+
+class _AdSimulationWidgetState extends State<AdSimulationWidget> {
+  int _countdown = 5;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return;
+      if (_countdown > 1) {
+        setState(() => _countdown--);
+      } else {
+        _timer?.cancel();
+        widget.game.overlays.remove('AdSimulation');
+        widget.game.resumeFromAd();
+      }
+    });
+  }
+  
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.black87,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+             const Icon(Icons.movie, size: 100, color: Colors.blueAccent),
+             const SizedBox(height: 20),
+             const Text("Simulating Ad...", style: TextStyle(color: Colors.white, fontSize: 32)),
+             const SizedBox(height: 20),
+             Text("Resuming in $_countdown", style: const TextStyle(color: Colors.yellowAccent, fontSize: 48, fontWeight: FontWeight.bold)),
+          ]
+        ),
+      ),
+    );
+  }
+}
