@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'dart:ui' as ui;
 import 'package:flame/components.dart';
 import 'package:flame/game.dart';
 import 'package:flame/particles.dart';
@@ -115,7 +116,7 @@ class MotionGameArena extends FlameGame with HasCollisionDetection {
     
     if (lives <= 0) {
       _isGameOver = true;
-      overlays.add('AdBreak');
+      overlays.add('GameOver');
     }
   }
 
@@ -150,9 +151,6 @@ class MotionGameArena extends FlameGame with HasCollisionDetection {
   void incrementScore(int addedPoints) {
     score += addedPoints;
     _scoreText.text = '★ $score';
-    if (speedMultiplier < 2.5) {
-      speedMultiplier += 0.02; // Increase difficulty over time
-    }
     HapticFeedback.lightImpact();
   }
 
@@ -161,20 +159,54 @@ class MotionGameArena extends FlameGame with HasCollisionDetection {
     super.update(dt);
     if (_isGameOver) return;
 
+    // Check for Paywall condition
+    if (score >= 4000) {
+      _isGameOver = true;
+      overlays.add('Paywall');
+      return;
+    }
+
     _spawnTimer += dt;
     if (_spawnTimer > 0.70) {
       _spawnTimer = 0;
       final ballX = _random.nextDouble() * (size.x - 60) + 30;
       
-      final double roll = _random.nextDouble();
       BallType type = BallType.standard;
-      if (roll > 0.90) {
-        type = BallType.golden;
-      } else if (roll > 0.60) {
-        type = BallType.fast;
+      
+      // Dynamic difficulty based on score
+      double baseSpeed = (300 + (score / 10.0)).clamp(300, 700);
+      double dx = 0;
+
+      if (score < 500) {
+        // Level 1: Straight down, slow
+      } else if (score < 1500) {
+        // Level 1.5: Random small X drift for SOME balls
+        if (_random.nextDouble() > 0.5) {
+          dx = _random.nextDouble() * 200 - 100;
+        }
+      } else if (score < 2000) {
+        // Level 1.8: Faster, high X drift for wall bouncing
+        if (_random.nextDouble() > 0.3) {
+          dx = _random.nextDouble() * 600 - 300;
+        }
+      } else {
+        // Level 2 (2000-4000): Fast balls, Yellow balls
+        if (_random.nextDouble() > 0.2) {
+          dx = _random.nextDouble() * 800 - 400;
+        }
+        
+        final double roll = _random.nextDouble();
+        if (roll > 0.85) {
+          type = BallType.golden;
+          baseSpeed *= 1.4;
+        } else if (roll > 0.60) {
+          type = BallType.fast;
+          baseSpeed *= 1.2;
+        }
       }
       
-      add(TargetBall(Vector2(ballX, -50), type));
+      Vector2 velocity = Vector2(dx, baseSpeed);
+      add(TargetBall(Vector2(ballX, -50), type, velocity));
     }
   }
 }
@@ -250,34 +282,46 @@ class FistTrackerComponent extends PositionComponent {
 
 class TargetBall extends PositionComponent with CollisionCallbacks {
   final BallType type;
+  Vector2 velocity;
   late final double radius;
-  late final double speed;
   late final int points;
   late final Paint _paint;
   
-  TargetBall(Vector2 startPosition, this.type) {
+  TargetBall(Vector2 startPosition, this.type, this.velocity) {
     position = startPosition;
     anchor = Anchor.center;
     
     switch (type) {
       case BallType.fast:
         radius = 25.0;
-        speed = 500.0;
         points = 30;
-        _paint = Paint()..color = Colors.purpleAccent;
+        _paint = Paint()
+          ..shader = ui.Gradient.radial(
+            Offset(radius, radius), radius,
+            [Colors.purpleAccent.shade100, Colors.deepPurple],
+            [0.2, 1.0],
+          );
         break;
       case BallType.golden:
         radius = 20.0;
-        speed = 700.0;
         points = 50;
-        _paint = Paint()..color = Colors.amberAccent;
+        _paint = Paint()
+          ..shader = ui.Gradient.radial(
+            Offset(radius, radius), radius,
+            [Colors.white, Colors.amberAccent],
+            [0.1, 1.0],
+          );
         break;
       case BallType.standard:
       default:
         radius = 35.0;
-        speed = 300.0;
         points = 15;
-        _paint = Paint()..color = Colors.greenAccent;
+        _paint = Paint()
+          ..shader = ui.Gradient.radial(
+            Offset(radius, radius), radius,
+            [Colors.lightGreenAccent, Colors.green],
+            [0.4, 1.0],
+          );
         break;
     }
     size = Vector2.all(radius * 2);
@@ -293,9 +337,19 @@ class TargetBall extends PositionComponent with CollisionCallbacks {
   void update(double dt) {
     super.update(dt);
     final game = findGame() as MotionGameArena?;
-    final double currentSpeed = speed * (game?.speedMultiplier ?? 1.0);
+    final double mult = game?.speedMultiplier ?? 1.0;
     
-    position.y += currentSpeed * dt;
+    // Wall bouncing physics
+    if (game != null) {
+       if (position.x <= radius && velocity.x < 0) {
+         velocity.x = -velocity.x;
+       } else if (position.x >= game.size.x - radius && velocity.x > 0) {
+         velocity.x = -velocity.x;
+       }
+    }
+    
+    position += (velocity * mult) * dt;
+    
     if (position.y > 1500) {
       if (game != null) game.onBallMissed();
       removeFromParent();
@@ -314,16 +368,20 @@ class TargetBall extends PositionComponent with CollisionCallbacks {
       if (game != null) {
         game.incrementScore(points);
         
+        // Custom explosion effects based on ball type
         final random = Random();
+        int particleCount = type == BallType.golden ? 25 : (type == BallType.fast ? 18 : 12);
+        double explodeSpeed = type == BallType.golden ? 400 : 250;
+        
         game.add(ParticleSystemComponent(
           particle: Particle.generate(
-            count: 14,
-            lifespan: 0.4,
+            count: particleCount,
+            lifespan: type == BallType.golden ? 0.6 : 0.4,
             generator: (i) => AcceleratedParticle(
               acceleration: Vector2(0, 150),
-              speed: Vector2(random.nextDouble() * 300 - 150, random.nextDouble() * -300),
+              speed: Vector2(random.nextDouble() * explodeSpeed * 2 - explodeSpeed, random.nextDouble() * -explodeSpeed),
               position: position.clone(),
-              child: CircleParticle(radius: 4, paint: Paint()..color = _paint.color),
+              child: CircleParticle(radius: type == BallType.golden ? 6 : 4, paint: Paint()..color = _paint.color),
             ),
           ),
         ));

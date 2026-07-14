@@ -1,4 +1,4 @@
-package com.example.pose_arena
+package com.example.jesture
 
 import io.flutter.embedding.android.FlutterActivity
 
