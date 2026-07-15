@@ -5,7 +5,7 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>$(DEVELOPMENT_LANGUAGE)</string>
     <key>CFBundleDisplayName</key>
-    <string>Pose Arena</string>
+    <string>Jesture</string>
     <key>CFBundleExecutable</key>
     <string>$(EXECUTABLE_NAME)</string>
     <key>CFBundleIdentifier</key>
@@ -13,7 +13,7 @@
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>pose_arena</string>
+    <string>jesture</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -27,7 +27,7 @@
     
     <!-- REQUIRED CAMERA PERMISSIONS FOR FLAME / YOLO TRACKING -->
     <key>NSCameraUsageDescription</key>
-    <string>Pose Arena requires camera access to track your wrist movements for gameplay mechanics.</string>
+    <string>Jesture requires camera access to track your wrist movements for gameplay mechanics.</string>
 
     <key>UILaunchStoryboardName</key>
     <string>LaunchScreen</string>

@@ -28,7 +28,7 @@ class WristTrackerApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Pose Arena',
+      title: 'Jesture',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark(),
       home: const GameScreen(),
@@ -176,11 +176,83 @@ class _GameScreenState extends State<GameScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Stack(
-        fit: StackFit.expand,
+      drawer: Drawer(
+        backgroundColor: Colors.blueGrey.shade900,
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            const DrawerHeader(
+              decoration: BoxDecoration(color: Colors.cyan),
+              child: Text('Jesture Menu', style: TextStyle(color: Colors.black, fontSize: 28, fontWeight: FontWeight.bold)),
+            ),
+            ListTile(
+              leading: const Icon(Icons.sports_esports, color: Colors.white),
+              title: const Text('Fall Ball Game (Current)', style: TextStyle(color: Colors.white, fontSize: 18)),
+              onTap: () => Navigator.pop(context),
+            ),
+            ListTile(
+              leading: const Icon(Icons.lock_clock, color: Colors.white54),
+              title: const Text('More Games Coming Soon...', style: TextStyle(color: Colors.white54, fontSize: 16)),
+              onTap: null,
+            ),
+            const Divider(color: Colors.white24),
+            ListTile(
+              leading: const Icon(Icons.info_outline, color: Colors.white),
+              title: const Text('About & Privacy', style: TextStyle(color: Colors.white, fontSize: 18)),
+              onTap: () {
+                Navigator.pop(context);
+                showDialog(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    backgroundColor: Colors.black87,
+                    title: const Text('About', style: TextStyle(color: Colors.cyanAccent)),
+                    content: const Text(
+                      'Jesture is a computer vision motion tracking game.\n\n'
+                      'Privacy Notice: We do NOT record, transmit, or store any of your camera feed or videos. '
+                      'All pose detection math happens strictly on your device locally in real-time.',
+                      style: TextStyle(color: Colors.white70, height: 1.5),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text('OK', style: TextStyle(color: Colors.cyanAccent)),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+      body: Column(
         children: [
-          if (_cameraController != null && _cameraController!.value.isInitialized)
-            CameraPreview(_cameraController!)
+          Expanded(
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                if (_cameraController != null && _cameraController!.value.isInitialized)
+            Positioned.fill(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final size = Size(constraints.maxWidth, constraints.maxHeight);
+                  // The camera is usually in landscape, so swap width and height for portrait
+                  final previewSize = _cameraController!.value.previewSize!;
+                  final inputWidth = previewSize.height;
+                  final inputHeight = previewSize.width;
+                  
+                  final scale = math.max(size.width / inputWidth, size.height / inputHeight);
+                  
+                  return Center(
+                    child: SizedBox(
+                      width: inputWidth * scale,
+                      height: inputHeight * scale,
+                      child: CameraPreview(_cameraController!),
+                    ),
+                  );
+                },
+              ),
+            )
           else
             const Center(child: CircularProgressIndicator(color: Colors.cyan)),
 
@@ -188,31 +260,133 @@ class _GameScreenState extends State<GameScreen> {
             game: _gameArena,
             overlayBuilderMap: {
               'MainMenu': (context, MotionGameArena game) {
-                return Container(
-                  width: double.infinity,
-                  height: double.infinity,
-                  color: Colors.blueGrey.shade900, // Solid opaque background
-                  child: Center(
+                return Stack(
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      height: double.infinity,
+                      color: Colors.blueGrey.shade900, // Solid opaque background
+                      child: Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.sports_esports, size: 80, color: Colors.cyan),
+                            const SizedBox(height: 20),
+                            const Text('JESTURE', style: TextStyle(color: Colors.white, fontSize: 48, fontWeight: FontWeight.bold, letterSpacing: 2)),
+                            const SizedBox(height: 40),
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.cyan, 
+                                foregroundColor: Colors.black, 
+                                padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 20),
+                                elevation: 10,
+                              ),
+                              onPressed: () {
+                                game.overlays.remove('MainMenu');
+                                game.startDistanceValidation();
+                              },
+                              child: const Text('START GAME', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                            ),
+                            const SizedBox(height: 15),
+                            OutlinedButton.icon(
+                              icon: const Icon(Icons.help_outline, color: Colors.cyan),
+                              label: const Text('HOW TO PLAY', style: TextStyle(color: Colors.cyan, fontSize: 18)),
+                              style: OutlinedButton.styleFrom(
+                                side: const BorderSide(color: Colors.cyan, width: 2),
+                                padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
+                              ),
+                              onPressed: () {
+                                showDialog(
+                                  context: context,
+                                  builder: (ctx) => AlertDialog(
+                                    backgroundColor: Colors.blueGrey.shade900,
+                                    title: const Text('How to Play', style: TextStyle(color: Colors.cyan)),
+                                    content: const Text(
+                                      '1. Stand 3-5 feet away from your device so your upper body is fully visible.\n\n'
+                                      '2. Use your left and right fists in front of the camera to punch the falling balls.\n\n'
+                                      '3. Don\'t let the balls drop past the screen! You have 20 lives.\n\n'
+                                      '4. Watch out for fast purple balls and high-score yellow balls!',
+                                      style: TextStyle(color: Colors.white, fontSize: 16, height: 1.5),
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(ctx),
+                                        child: const Text('GOT IT', style: TextStyle(color: Colors.cyan, fontWeight: FontWeight.bold)),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      top: 40,
+                      left: 20,
+                      child: Builder(
+                        builder: (ctx) => IconButton(
+                          icon: const Icon(Icons.menu, color: Colors.white, size: 40),
+                          onPressed: () {
+                            Scaffold.of(ctx).openDrawer();
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+              'DistanceValidation': (context, MotionGameArena game) {
+                return Center(
+                  child: Container(
+                    width: 320,
+                    padding: const EdgeInsets.all(25),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.85),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.cyanAccent, width: 2),
+                    ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.sports_esports, size: 80, color: Colors.cyan),
+                        const Icon(Icons.camera_front, size: 60, color: Colors.cyanAccent),
                         const SizedBox(height: 20),
-                        const Text('POSE ARENA', style: TextStyle(color: Colors.white, fontSize: 48, fontWeight: FontWeight.bold, letterSpacing: 2)),
-                        const SizedBox(height: 40),
-                        ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.cyan, 
-                            foregroundColor: Colors.black, 
-                            padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 20),
-                            elevation: 10,
-                          ),
+                        const Text(
+                          'DISTANCE VALIDATION',
+                          style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 10),
+                        const Text(
+                          'Stand so your upper body fits the screen.',
+                          style: TextStyle(color: Colors.white70, fontSize: 14),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 30),
+                        ValueListenableBuilder<String>(
+                          valueListenable: game.distanceStatusNotifier,
+                          builder: (context, status, child) {
+                            Color statusColor = Colors.yellowAccent;
+                            if (status == 'Perfect! Hold still...') statusColor = Colors.greenAccent;
+                            if (status == 'Searching for body...') statusColor = Colors.redAccent;
+                            
+                            return Text(
+                              status,
+                              style: TextStyle(color: statusColor, fontSize: 22, fontWeight: FontWeight.bold),
+                              textAlign: TextAlign.center,
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 30),
+                        TextButton(
                           onPressed: () {
-                            game.overlays.remove('MainMenu');
+                            game.isDistanceValidating = false;
+                            game.overlays.remove('DistanceValidation');
                             game.startCountdown();
                           },
-                          child: const Text('START GAME', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-                        ),
+                          child: const Text('Skip & Start Anyway', style: TextStyle(color: Colors.white54, decoration: TextDecoration.underline)),
+                        )
                       ],
                     ),
                   ),
@@ -236,96 +410,143 @@ class _GameScreenState extends State<GameScreen> {
                   ),
                 );
               },
-              'AdBreak': (context, MotionGameArena game) {
-                return Center(
-                  child: Container(
-                    padding: const EdgeInsets.all(30),
-                    decoration: BoxDecoration(
-                      color: Colors.black87,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.cyan, width: 2),
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text('STREAK BROKEN!', style: TextStyle(color: Colors.redAccent, fontSize: 36, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 15),
-                        Text('CURRENT SCORE: ${game.score}', style: const TextStyle(color: Colors.yellowAccent, fontSize: 24, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 30),
-                        ElevatedButton.icon(
-                          icon: const Icon(Icons.play_circle_fill, color: Colors.black),
-                          label: const Text('WATCH AD TO REVIVE', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                          style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15)),
-                          onPressed: () {
-                            game.overlays.remove('AdBreak');
-                            game.overlays.add('AdSimulation');
-                          },
+              'GameOver': (context, MotionGameArena game) {
+                return Stack(
+                  children: [
+                    Center(
+                      child: Container(
+                        padding: const EdgeInsets.all(40),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.9),
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(color: Colors.cyanAccent, width: 3),
+                          boxShadow: [
+                             BoxShadow(color: Colors.cyanAccent.withOpacity(0.5), blurRadius: 20, spreadRadius: 5),
+                          ],
                         ),
-                        const SizedBox(height: 15),
-                        TextButton(
-                          onPressed: () {
-                            game.overlays.remove('AdBreak');
-                            game.overlays.add('GameOver');
-                          },
-                          child: const Text('No thanks, end game', style: TextStyle(color: Colors.white54, fontSize: 16)),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text('OUT OF LIVES', style: TextStyle(color: Colors.redAccent, fontSize: 42, fontWeight: FontWeight.w900, letterSpacing: 2)),
+                            const SizedBox(height: 20),
+                            const Text('YOUR FINAL SCORE', style: TextStyle(color: Colors.white70, fontSize: 18, letterSpacing: 1)),
+                            Text('${game.score}', style: const TextStyle(color: Colors.yellowAccent, fontSize: 80, fontWeight: FontWeight.bold, shadows: [Shadow(color: Colors.black, blurRadius: 10)])),
+                            const SizedBox(height: 40),
+                            ElevatedButton.icon(
+                              icon: const Icon(Icons.play_circle_fill, color: Colors.black),
+                              label: const Text('WATCH AD TO REVIVE', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                              style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15)),
+                              onPressed: () {
+                                game.overlays.remove('GameOver');
+                                game.overlays.add('AdSimulation');
+                              },
+                            ),
+                            const SizedBox(height: 15),
+                            ElevatedButton.icon(
+                              icon: const Icon(Icons.refresh, size: 24),
+                              label: const Text('PLAY AGAIN (RESET)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.cyanAccent, 
+                                foregroundColor: Colors.black, 
+                                padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
+                              ),
+                              onPressed: () {
+                                game.overlays.remove('GameOver');
+                                game.resetGame();
+                              },
+                            ),
+                            const SizedBox(height: 20),
+                            TextButton(
+                              onPressed: () {
+                                game.overlays.remove('GameOver');
+                                game.overlays.add('MainMenu');
+                              },
+                              child: const Text('Main Menu', style: TextStyle(color: Colors.white54, fontSize: 18)),
+                            ),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
-                  ),
+                    Positioned(
+                      top: 40,
+                      left: 20,
+                      child: Builder(
+                        builder: (ctx) => IconButton(
+                          icon: const Icon(Icons.menu, color: Colors.white, size: 40),
+                          onPressed: () => Scaffold.of(ctx).openDrawer(),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+              'Paywall': (context, MotionGameArena game) {
+                return Stack(
+                  children: [
+                    Center(
+                      child: Container(
+                        padding: const EdgeInsets.all(40),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.95),
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(color: Colors.amberAccent, width: 3),
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.lock, size: 80, color: Colors.amberAccent),
+                            const SizedBox(height: 20),
+                            const Text('LEVEL 3 LOCKED', style: TextStyle(color: Colors.amberAccent, fontSize: 36, fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 15),
+                            const Text('You have reached 4000 points!', style: TextStyle(color: Colors.white, fontSize: 20)),
+                            const SizedBox(height: 30),
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(backgroundColor: Colors.amberAccent, foregroundColor: Colors.black, padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15)),
+                              onPressed: () {
+                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Payment Gateway Placeholder')));
+                              },
+                              child: const Text('UNLOCK FOR \$0.99', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                            ),
+                            const SizedBox(height: 20),
+                            TextButton(
+                              onPressed: () {
+                                game.overlays.remove('Paywall');
+                                game.resetGame();
+                              },
+                              child: const Text('Start Over from Level 1', style: TextStyle(color: Colors.white54, fontSize: 16)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      top: 40,
+                      left: 20,
+                      child: Builder(
+                        builder: (ctx) => IconButton(
+                          icon: const Icon(Icons.menu, color: Colors.white, size: 40),
+                          onPressed: () => Scaffold.of(ctx).openDrawer(),
+                        ),
+                      ),
+                    ),
+                  ],
                 );
               },
               'AdSimulation': (context, MotionGameArena game) {
                 return AdSimulationWidget(game: game);
               },
-              'GameOver': (context, MotionGameArena game) {
-                return Center(
-                  child: Container(
-                    padding: const EdgeInsets.all(40),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.9),
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: Colors.cyanAccent, width: 3),
-                      boxShadow: [
-                         BoxShadow(color: Colors.cyanAccent.withOpacity(0.5), blurRadius: 20, spreadRadius: 5),
-                      ],
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text('OUT OF LIVES', style: TextStyle(color: Colors.redAccent, fontSize: 42, fontWeight: FontWeight.w900, letterSpacing: 2)),
-                        const SizedBox(height: 20),
-                        const Text('YOUR FINAL SCORE', style: TextStyle(color: Colors.white70, fontSize: 18, letterSpacing: 1)),
-                        Text('${game.score}', style: const TextStyle(color: Colors.yellowAccent, fontSize: 80, fontWeight: FontWeight.bold, shadows: [Shadow(color: Colors.black, blurRadius: 10)])),
-                        const SizedBox(height: 40),
-                        ElevatedButton.icon(
-                          icon: const Icon(Icons.refresh, size: 30),
-                          label: const Text('PLAY AGAIN', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.cyanAccent, 
-                            foregroundColor: Colors.black, 
-                            padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 20),
-                            elevation: 15,
-                          ),
-                          onPressed: () {
-                            game.overlays.remove('GameOver');
-                            game.resetGame();
-                          },
-                        ),
-                        const SizedBox(height: 20),
-                        TextButton(
-                          onPressed: () {
-                            game.overlays.remove('GameOver');
-                            game.overlays.add('MainMenu');
-                          },
-                          child: const Text('Main Menu', style: TextStyle(color: Colors.white54, fontSize: 18)),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
             },
             initialActiveOverlays: const ['MainMenu'],
+          ),
+        ],
+      ),
+    ),
+          Container(
+            height: 45,
+            width: double.infinity,
+            color: Colors.black,
+            alignment: Alignment.center,
+            child: const Text('GOOGLE ADS SPACE', style: TextStyle(color: Colors.white54, fontSize: 16, letterSpacing: 2)),
           ),
         ],
       ),

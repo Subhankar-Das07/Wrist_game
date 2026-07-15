@@ -1,4 +1,4 @@
-name: pose_arena
+name: jesture
 description: A real-time computer vision motion tracking game using YOLOv8-Pose and Flame.
 version: 1.0.0+1
 
