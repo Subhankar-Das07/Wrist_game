@@ -283,9 +283,40 @@ class _GameScreenState extends State<GameScreen> {
                               ),
                               onPressed: () {
                                 game.overlays.remove('MainMenu');
-                                game.startCountdown();
+                                game.startDistanceValidation();
                               },
                               child: const Text('START GAME', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                            ),
+                            const SizedBox(height: 15),
+                            OutlinedButton.icon(
+                              icon: const Icon(Icons.help_outline, color: Colors.cyan),
+                              label: const Text('HOW TO PLAY', style: TextStyle(color: Colors.cyan, fontSize: 18)),
+                              style: OutlinedButton.styleFrom(
+                                side: const BorderSide(color: Colors.cyan, width: 2),
+                                padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
+                              ),
+                              onPressed: () {
+                                showDialog(
+                                  context: context,
+                                  builder: (ctx) => AlertDialog(
+                                    backgroundColor: Colors.blueGrey.shade900,
+                                    title: const Text('How to Play', style: TextStyle(color: Colors.cyan)),
+                                    content: const Text(
+                                      '1. Stand 3-5 feet away from your device so your upper body is fully visible.\n\n'
+                                      '2. Use your left and right fists in front of the camera to punch the falling balls.\n\n'
+                                      '3. Don\'t let the balls drop past the screen! You have 20 lives.\n\n'
+                                      '4. Watch out for fast purple balls and high-score yellow balls!',
+                                      style: TextStyle(color: Colors.white, fontSize: 16, height: 1.5),
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(ctx),
+                                        child: const Text('GOT IT', style: TextStyle(color: Colors.cyan, fontWeight: FontWeight.bold)),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
                             ),
                           ],
                         ),
@@ -304,6 +335,61 @@ class _GameScreenState extends State<GameScreen> {
                       ),
                     ),
                   ],
+                );
+              },
+              'DistanceValidation': (context, MotionGameArena game) {
+                return Center(
+                  child: Container(
+                    width: 320,
+                    padding: const EdgeInsets.all(25),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.85),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.cyanAccent, width: 2),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.camera_front, size: 60, color: Colors.cyanAccent),
+                        const SizedBox(height: 20),
+                        const Text(
+                          'DISTANCE VALIDATION',
+                          style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 10),
+                        const Text(
+                          'Stand so your upper body fits the screen.',
+                          style: TextStyle(color: Colors.white70, fontSize: 14),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 30),
+                        ValueListenableBuilder<String>(
+                          valueListenable: game.distanceStatusNotifier,
+                          builder: (context, status, child) {
+                            Color statusColor = Colors.yellowAccent;
+                            if (status == 'Perfect! Hold still...') statusColor = Colors.greenAccent;
+                            if (status == 'Searching for body...') statusColor = Colors.redAccent;
+                            
+                            return Text(
+                              status,
+                              style: TextStyle(color: statusColor, fontSize: 22, fontWeight: FontWeight.bold),
+                              textAlign: TextAlign.center,
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 30),
+                        TextButton(
+                          onPressed: () {
+                            game.isDistanceValidating = false;
+                            game.overlays.remove('DistanceValidation');
+                            game.startCountdown();
+                          },
+                          child: const Text('Skip & Start Anyway', style: TextStyle(color: Colors.white54, decoration: TextDecoration.underline)),
+                        )
+                      ],
+                    ),
+                  ),
                 );
               },
               'Countdown': (context, MotionGameArena game) {

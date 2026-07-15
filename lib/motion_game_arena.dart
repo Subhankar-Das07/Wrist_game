@@ -19,6 +19,10 @@ class MotionGameArena extends FlameGame with HasCollisionDetection {
   double speedMultiplier = 1.0;
   bool _isGameOver = true;
 
+  bool isDistanceValidating = false;
+  final ValueNotifier<String> distanceStatusNotifier = ValueNotifier<String>('Searching...');
+  double goodDistanceTimer = 0.0;
+
   final ValueNotifier<int> countdownNotifier = ValueNotifier<int>(0);
   TimerComponent? _countdownTimer;
 
@@ -51,6 +55,13 @@ class MotionGameArena extends FlameGame with HasCollisionDetection {
     );
 
     addAll([_livesText, _scoreText, _leftFist, _rightFist]);
+  }
+
+  void startDistanceValidation() {
+    isDistanceValidating = true;
+    goodDistanceTimer = 0.0;
+    distanceStatusNotifier.value = 'Analyzing pose...';
+    overlays.add('DistanceValidation');
   }
 
   void startCountdown() {
@@ -121,6 +132,25 @@ class MotionGameArena extends FlameGame with HasCollisionDetection {
   }
 
   void updateFullPose(Pose pose, double scale, double offsetX, double offsetY, double inputWidth) {
+    if (isDistanceValidating) {
+      final leftShoulder = pose.landmarks[PoseLandmarkType.leftShoulder];
+      final rightShoulder = pose.landmarks[PoseLandmarkType.rightShoulder];
+      
+      if (leftShoulder != null && rightShoulder != null && leftShoulder.likelihood > 0.5 && rightShoulder.likelihood > 0.5) {
+        double shoulderDist = (leftShoulder.x - rightShoulder.x).abs() / inputWidth;
+        if (shoulderDist < 0.15) {
+          distanceStatusNotifier.value = 'Move Closer';
+        } else if (shoulderDist > 0.35) {
+          distanceStatusNotifier.value = 'Move Further Back';
+        } else {
+          distanceStatusNotifier.value = 'Perfect! Hold still...';
+        }
+      } else {
+        distanceStatusNotifier.value = 'Searching for body...';
+      }
+      return; // Do not update fists during validation
+    }
+
     if (_isGameOver) return;
     
     final leftWrist = pose.landmarks[PoseLandmarkType.leftWrist];
@@ -157,6 +187,20 @@ class MotionGameArena extends FlameGame with HasCollisionDetection {
   @override
   void update(double dt) {
     super.update(dt);
+    if (isDistanceValidating) {
+      if (distanceStatusNotifier.value == 'Perfect! Hold still...') {
+        goodDistanceTimer += dt;
+        if (goodDistanceTimer >= 3.0) {
+          isDistanceValidating = false;
+          overlays.remove('DistanceValidation');
+          startCountdown();
+        }
+      } else {
+        goodDistanceTimer = 0.0;
+      }
+      return;
+    }
+
     if (_isGameOver) return;
 
     // Check for Paywall condition
