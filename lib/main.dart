@@ -3,12 +3,13 @@ import 'package:flutter/services.dart';
 import 'package:camera/camera.dart';
 import 'package:flame/game.dart' hide Plane;
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
+import 'base_jesture_game.dart';
+import 'motion_game_arena.dart';
+import 'hit_ball_arena.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 
-
-import 'motion_game_arena.dart';
 
 List<CameraDescription> cameras = [];
 
@@ -44,7 +45,8 @@ class GameScreen extends StatefulWidget {
 
 class _GameScreenState extends State<GameScreen> {
   CameraController? _cameraController;
-  late final MotionGameArena _gameArena;
+  late BaseJestureGame _gameArena;
+  String _initialOverlay = 'MainMenu';
   
   final PoseDetector _poseDetector = PoseDetector(options: PoseDetectorOptions(
     mode: PoseDetectionMode.stream,
@@ -187,13 +189,25 @@ class _GameScreenState extends State<GameScreen> {
             ),
             ListTile(
               leading: const Icon(Icons.sports_esports, color: Colors.white),
-              title: const Text('Fall Ball Game (Current)', style: TextStyle(color: Colors.white, fontSize: 18)),
-              onTap: () => Navigator.pop(context),
+              title: const Text('Play Fall Ball', style: TextStyle(color: Colors.white, fontSize: 18)),
+              onTap: () {
+                Navigator.pop(context);
+                setState(() {
+                  _gameArena = MotionGameArena();
+                  _initialOverlay = 'MainMenu';
+                });
+              },
             ),
             ListTile(
-              leading: const Icon(Icons.lock_clock, color: Colors.white54),
-              title: const Text('More Games Coming Soon...', style: TextStyle(color: Colors.white54, fontSize: 16)),
-              onTap: null,
+              leading: const Icon(Icons.sports_basketball, color: Colors.amberAccent),
+              title: const Text('Play Hit Ball', style: TextStyle(color: Colors.amberAccent, fontSize: 18)),
+              onTap: () {
+                Navigator.pop(context);
+                setState(() {
+                  _gameArena = HitBallArena();
+                  _initialOverlay = 'MainMenu';
+                });
+              },
             ),
             const Divider(color: Colors.white24),
             ListTile(
@@ -257,9 +271,10 @@ class _GameScreenState extends State<GameScreen> {
             const Center(child: CircularProgressIndicator(color: Colors.cyan)),
 
           GameWidget(
+            key: ValueKey(_gameArena.hashCode),
             game: _gameArena,
             overlayBuilderMap: {
-              'MainMenu': (context, MotionGameArena game) {
+              'MainMenu': (context, BaseJestureGame game) {
                 return Stack(
                   children: [
                     Container(
@@ -303,8 +318,8 @@ class _GameScreenState extends State<GameScreen> {
                                     title: const Text('How to Play', style: TextStyle(color: Colors.cyan)),
                                     content: const Text(
                                       '1. Stand 3-5 feet away from your device so your upper body is fully visible.\n\n'
-                                      '2. Use your left and right fists in front of the camera to punch the falling balls.\n\n'
-                                      '3. Don\'t let the balls drop past the screen! You have 20 lives.\n\n'
+                                      '2. Use your left and right fists in front of the camera to punch the targets.\n\n'
+                                      '3. Don\'t let the targets expire! You have 20 lives.\n\n'
                                       '4. Watch out for fast purple balls and high-score yellow balls!',
                                       style: TextStyle(color: Colors.white, fontSize: 16, height: 1.5),
                                     ),
@@ -337,7 +352,7 @@ class _GameScreenState extends State<GameScreen> {
                   ],
                 );
               },
-              'DistanceValidation': (context, MotionGameArena game) {
+              'DistanceValidation': (context, BaseJestureGame game) {
                 return Center(
                   child: Container(
                     width: 320,
@@ -392,7 +407,7 @@ class _GameScreenState extends State<GameScreen> {
                   ),
                 );
               },
-              'Countdown': (context, MotionGameArena game) {
+              'Countdown': (context, BaseJestureGame game) {
                 return Center(
                   child: ValueListenableBuilder<int>(
                     valueListenable: game.countdownNotifier,
@@ -410,7 +425,7 @@ class _GameScreenState extends State<GameScreen> {
                   ),
                 );
               },
-              'GameOver': (context, MotionGameArena game) {
+              'GameOver': (context, BaseJestureGame game) {
                 return Stack(
                   children: [
                     Center(
@@ -480,7 +495,7 @@ class _GameScreenState extends State<GameScreen> {
                   ],
                 );
               },
-              'Paywall': (context, MotionGameArena game) {
+              'Paywall': (context, BaseJestureGame game) {
                 return Stack(
                   children: [
                     Center(
@@ -532,11 +547,11 @@ class _GameScreenState extends State<GameScreen> {
                   ],
                 );
               },
-              'AdSimulation': (context, MotionGameArena game) {
+              'AdSimulation': (context, BaseJestureGame game) {
                 return AdSimulationWidget(game: game);
               },
             },
-            initialActiveOverlays: const ['MainMenu'],
+            initialActiveOverlays: [_initialOverlay],
           ),
         ],
       ),
@@ -555,8 +570,8 @@ class _GameScreenState extends State<GameScreen> {
 }
 
 class AdSimulationWidget extends StatefulWidget {
-  final MotionGameArena game;
-  const AdSimulationWidget({Key? key, required this.game}) : super(key: key);
+  final BaseJestureGame game;
+  const AdSimulationWidget({super.key, required this.game});
   @override
   State<AdSimulationWidget> createState() => _AdSimulationWidgetState();
 }
