@@ -157,12 +157,13 @@ class _GameScreenState extends State<GameScreen> {
     final double inputWidth = _imageSize!.height;
     final double inputHeight = _imageSize!.width;
     
-    // Calculate the aspect ratio scale factor mirroring BoxFit.cover behavior
-    final double scale = math.max(screenSize.width / inputWidth, screenSize.height / inputHeight);
+    // Calculate the aspect ratio scale factor mirroring BoxFit.contain behavior
+    final double scale = math.min(screenSize.width / inputWidth, screenSize.height / inputHeight);
     
-    // Determine coordinate offsets caused by overflowing crop areas
-    final double offsetX = (inputWidth * scale - screenSize.width) / 2;
-    final double offsetY = (inputHeight * scale - screenSize.height) / 2;
+    // Determine coordinate offsets caused by letterboxing (black bars)
+    // We pass negative offsets because the physics engine natively subtracts them.
+    final double offsetX = -(screenSize.width - inputWidth * scale) / 2;
+    final double offsetY = -(screenSize.height - inputHeight * scale) / 2;
     
     _gameArena.updateFullPose(pose, scale, offsetX, offsetY, inputWidth);
   }
@@ -246,28 +247,17 @@ class _GameScreenState extends State<GameScreen> {
               fit: StackFit.expand,
               children: [
                 if (_cameraController != null && _cameraController!.value.isInitialized)
-            Positioned.fill(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final size = Size(constraints.maxWidth, constraints.maxHeight);
-                  // The camera is usually in landscape, so swap width and height for portrait
-                  final previewSize = _cameraController!.value.previewSize!;
-                  final inputWidth = previewSize.height;
-                  final inputHeight = previewSize.width;
-                  
-                  final scale = math.max(size.width / inputWidth, size.height / inputHeight);
-                  
-                  return Center(
-                    child: SizedBox(
-                      width: inputWidth * scale,
-                      height: inputHeight * scale,
-                      child: CameraPreview(_cameraController!),
+                  Positioned.fill(
+                    child: FittedBox(
+                      fit: BoxFit.contain,
+                      child: SizedBox(
+                        width: _cameraController!.value.previewSize!.height,
+                        height: _cameraController!.value.previewSize!.width,
+                        child: CameraPreview(_cameraController!),
+                      ),
                     ),
-                  );
-                },
-              ),
-            )
-          else
+                  )
+                else
             const Center(child: CircularProgressIndicator(color: Colors.cyan)),
 
           GameWidget(

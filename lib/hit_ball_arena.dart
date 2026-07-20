@@ -61,7 +61,7 @@ class StaticHitBall extends PositionComponent with CollisionCallbacks {
     size = Vector2.all(maxRadius * 2);
     
     _paint = Paint()
-      ..color = Colors.cyanAccent.withOpacity(0.9)
+      ..color = Colors.cyanAccent.withValues(alpha: 0.9)
       ..style = PaintingStyle.fill;
   }
 
@@ -81,32 +81,27 @@ class StaticHitBall extends PositionComponent with CollisionCallbacks {
       final game = findGame() as BaseJestureGame?;
       if (game != null) game.onBallMissed();
       removeFromParent();
-    } else {
-      // Shrink the ball visually and hitbox as time runs out
-      double ratio = (_timeRemaining / maxTimeToLive).clamp(0.2, 1.0);
-      double currentRadius = maxRadius * ratio;
-      size = Vector2.all(currentRadius * 2);
-      _hitbox.radius = currentRadius;
-      _hitbox.position = Vector2(currentRadius, currentRadius);
-      
       // Flash red when almost out of time
       if (_timeRemaining < 0.5) {
-        _paint.color = Colors.redAccent.withOpacity(0.9);
+        _paint.color = Colors.redAccent.withValues(alpha: 0.9);
       }
     }
   }
 
   @override
   void render(Canvas canvas) {
-    double currentRadius = size.x / 2;
-    canvas.drawCircle(Offset(currentRadius, currentRadius), currentRadius, _paint);
+    double ratio = (_timeRemaining / maxTimeToLive).clamp(0.2, 1.0);
+    double currentRadius = maxRadius * ratio;
+    
+    // Draw the shrinking ball in the center
+    canvas.drawCircle(Offset(maxRadius, maxRadius), currentRadius, _paint);
     
     // Draw an outline ring to show original size
     final outlinePaint = Paint()
       ..color = Colors.white24
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.0;
-    canvas.drawCircle(Offset(currentRadius, currentRadius), maxRadius, outlinePaint);
+    canvas.drawCircle(Offset(maxRadius, maxRadius), maxRadius, outlinePaint);
   }
 
   @override

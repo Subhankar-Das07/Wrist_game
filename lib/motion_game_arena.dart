@@ -149,8 +149,8 @@ class TargetBall extends PositionComponent with CollisionCallbacks {
     
     position += (velocity * mult) * dt;
     
-    if (position.y > 1500) {
-      if (game != null) game.onBallMissed();
+    if (game != null && position.y > game.size.y + radius) {
+      game.onBallMissed();
       removeFromParent();
     }
   }

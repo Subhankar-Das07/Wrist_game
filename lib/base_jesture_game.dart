@@ -149,9 +149,9 @@ abstract class BaseJestureGame extends FlameGame with HasCollisionDetection {
       
       if (leftShoulder != null && rightShoulder != null && leftShoulder.likelihood > 0.5 && rightShoulder.likelihood > 0.5) {
         double shoulderDist = (leftShoulder.x - rightShoulder.x).abs() / inputWidth;
-        if (shoulderDist < 0.15) {
+        if (shoulderDist < 0.12) {
           distanceStatusNotifier.value = 'Move Closer';
-        } else if (shoulderDist > 0.35) {
+        } else if (shoulderDist > 0.50) {
           distanceStatusNotifier.value = 'Move Further Back';
         } else {
           distanceStatusNotifier.value = 'Perfect! Hold still...';
@@ -262,13 +262,14 @@ class FistTrackerComponent extends PositionComponent with CollisionCallbacks {
     }
 
     final double distance = _smoothedPosition.distanceTo(targetPosition);
-    final double maxMovePerFrame = 200.0; 
+    final double maxMovePerFrame = 10000.0 * dt; 
     
     if (distance > maxMovePerFrame) {
       final direction = (targetPosition - _smoothedPosition).normalized();
       _smoothedPosition += direction * maxMovePerFrame;
     } else {
-      _smoothedPosition.lerp(targetPosition, 0.4); 
+      final double lerpFactor = 1.0 - exp(-25.0 * dt);
+      _smoothedPosition.lerp(targetPosition, lerpFactor); 
     }
     
     position = _smoothedPosition.clone();
