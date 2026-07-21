@@ -5,7 +5,8 @@ import 'package:flame/game.dart' hide Plane;
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 import 'base_jesture_game.dart';
 import 'motion_game_arena.dart';
-import 'hit_ball_arena.dart';
+import 'hit_stars_arena.dart';
+import 'score_manager.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
@@ -189,7 +190,7 @@ class _GameScreenState extends State<GameScreen> {
               child: Text('Jesture Menu', style: TextStyle(color: Colors.black, fontSize: 28, fontWeight: FontWeight.bold)),
             ),
             ListTile(
-              leading: const Icon(Icons.sports_esports, color: Colors.white),
+              leading: const Icon(Icons.sports_basketball, color: Colors.white),
               title: const Text('Play Fall Ball', style: TextStyle(color: Colors.white, fontSize: 18)),
               onTap: () {
                 Navigator.pop(context);
@@ -200,12 +201,12 @@ class _GameScreenState extends State<GameScreen> {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.sports_basketball, color: Colors.amberAccent),
-              title: const Text('Play Hit Ball', style: TextStyle(color: Colors.amberAccent, fontSize: 18)),
+              leading: const Icon(Icons.star, color: Colors.amberAccent),
+              title: const Text('Play Hit Stars', style: TextStyle(color: Colors.amberAccent, fontSize: 18)),
               onTap: () {
                 Navigator.pop(context);
                 setState(() {
-                  _gameArena = HitBallArena();
+                  _gameArena = HitStarsArena();
                   _initialOverlay = 'MainMenu';
                 });
               },
@@ -240,9 +241,56 @@ class _GameScreenState extends State<GameScreen> {
           ],
         ),
       ),
-      body: Column(
-        children: [
-          Expanded(
+      body: SafeArea(
+        child: Column(
+          children: [
+            ValueListenableBuilder<bool>(
+              valueListenable: _gameArena.isPlayingNotifier,
+              builder: (context, isPlaying, child) {
+                if (!isPlaying) return const SizedBox.shrink();
+                return Container(
+                  height: 50,
+                  width: double.infinity,
+                  color: Colors.black,
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  child: Stack(
+                    children: [
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: IconButton(
+                          icon: const Icon(Icons.arrow_back, color: Colors.white),
+                          onPressed: () {
+                            _gameArena.pauseEngine();
+                            _gameArena.overlays.add('PauseMenu');
+                          },
+                        ),
+                      ),
+                      Align(
+                        alignment: Alignment.center,
+                        child: ValueListenableBuilder<int>(
+                          key: ValueKey('score_${_gameArena.hashCode}'),
+                          valueListenable: _gameArena.scoreNotifier,
+                          builder: (context, score, child) {
+                            return Text('★ $score', style: const TextStyle(color: Colors.yellowAccent, fontSize: 24, fontWeight: FontWeight.bold));
+                          },
+                        ),
+                      ),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: ValueListenableBuilder<int>(
+                          key: ValueKey('lives_${_gameArena.hashCode}'),
+                          valueListenable: _gameArena.livesNotifier,
+                          builder: (context, lives, child) {
+                            return Text('❤️ $lives', style: const TextStyle(color: Colors.redAccent, fontSize: 24, fontWeight: FontWeight.bold));
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+            Expanded(
             child: Stack(
               fit: StackFit.expand,
               children: [
@@ -265,23 +313,39 @@ class _GameScreenState extends State<GameScreen> {
             game: _gameArena,
             overlayBuilderMap: {
               'MainMenu': (context, BaseJestureGame game) {
+                bool isStars = game is HitStarsArena;
+                String bgImage = isStars ? 'assets/images/hit_stars_bg.png' : 'assets/images/fall_ball_bg.png';
+                String title = isStars ? 'HIT STARS' : 'FALL BALL';
+                IconData titleIcon = isStars ? Icons.star : Icons.sports_basketball;
+                Color themeColor = isStars ? Colors.amberAccent : Colors.cyan;
+                String instructionsText = isStars 
+                    ? '1. Stand 3-5 feet away.\n2. Punch the glowing stars before they disappear.\n3. You have 20 lives.'
+                    : '1. Stand 3-5 feet away.\n2. Punch the falling balls to score points.\n3. Avoid missing them! You have 20 lives.';
+
                 return Stack(
                   children: [
                     Container(
                       width: double.infinity,
                       height: double.infinity,
-                      color: Colors.blueGrey.shade900, // Solid opaque background
+                      decoration: BoxDecoration(
+                        color: Colors.blueGrey.shade900,
+                        image: DecorationImage(
+                          image: AssetImage(bgImage),
+                          fit: BoxFit.cover,
+                          colorFilter: ColorFilter.mode(Colors.black.withValues(alpha: 0.5), BlendMode.darken),
+                        ),
+                      ),
                       child: Center(
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.sports_esports, size: 80, color: Colors.cyan),
+                            Icon(titleIcon, size: 80, color: themeColor),
                             const SizedBox(height: 20),
-                            const Text('JESTURE', style: TextStyle(color: Colors.white, fontSize: 48, fontWeight: FontWeight.bold, letterSpacing: 2)),
+                            Text(title, style: const TextStyle(color: Colors.white, fontSize: 48, fontWeight: FontWeight.bold, letterSpacing: 2)),
                             const SizedBox(height: 40),
                             ElevatedButton(
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.cyan, 
+                                backgroundColor: themeColor, 
                                 foregroundColor: Colors.black, 
                                 padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 20),
                                 elevation: 10,
@@ -294,10 +358,10 @@ class _GameScreenState extends State<GameScreen> {
                             ),
                             const SizedBox(height: 15),
                             OutlinedButton.icon(
-                              icon: const Icon(Icons.help_outline, color: Colors.cyan),
-                              label: const Text('HOW TO PLAY', style: TextStyle(color: Colors.cyan, fontSize: 18)),
+                              icon: Icon(Icons.help_outline, color: themeColor),
+                              label: Text('HOW TO PLAY', style: TextStyle(color: themeColor, fontSize: 18)),
                               style: OutlinedButton.styleFrom(
-                                side: const BorderSide(color: Colors.cyan, width: 2),
+                                side: BorderSide(color: themeColor, width: 2),
                                 padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
                               ),
                               onPressed: () {
@@ -305,22 +369,32 @@ class _GameScreenState extends State<GameScreen> {
                                   context: context,
                                   builder: (ctx) => AlertDialog(
                                     backgroundColor: Colors.blueGrey.shade900,
-                                    title: const Text('How to Play', style: TextStyle(color: Colors.cyan)),
-                                    content: const Text(
-                                      '1. Stand 3-5 feet away from your device so your upper body is fully visible.\n\n'
-                                      '2. Use your left and right fists in front of the camera to punch the targets.\n\n'
-                                      '3. Don\'t let the targets expire! You have 20 lives.\n\n'
-                                      '4. Watch out for fast purple balls and high-score yellow balls!',
-                                      style: TextStyle(color: Colors.white, fontSize: 16, height: 1.5),
+                                    title: Text('How to Play: $title', style: TextStyle(color: themeColor)),
+                                    content: Text(
+                                      instructionsText,
+                                      style: const TextStyle(color: Colors.white, fontSize: 16, height: 1.5),
                                     ),
                                     actions: [
                                       TextButton(
                                         onPressed: () => Navigator.pop(ctx),
-                                        child: const Text('GOT IT', style: TextStyle(color: Colors.cyan, fontWeight: FontWeight.bold)),
+                                        child: Text('GOT IT', style: TextStyle(color: themeColor, fontWeight: FontWeight.bold)),
                                       ),
                                     ],
                                   ),
                                 );
+                              },
+                            ),
+                            const SizedBox(height: 15),
+                            OutlinedButton.icon(
+                              icon: const Icon(Icons.leaderboard, color: Colors.white),
+                              label: const Text('LEADERBOARD', style: TextStyle(color: Colors.white, fontSize: 18)),
+                              style: OutlinedButton.styleFrom(
+                                side: const BorderSide(color: Colors.white, width: 2),
+                                padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
+                              ),
+                              onPressed: () {
+                                game.overlays.remove('MainMenu');
+                                game.overlays.add('LeaderboardMenu');
                               },
                             ),
                           ],
@@ -540,6 +614,104 @@ class _GameScreenState extends State<GameScreen> {
               'AdSimulation': (context, BaseJestureGame game) {
                 return AdSimulationWidget(game: game);
               },
+              'PauseMenu': (context, BaseJestureGame game) {
+                return Container(
+                  color: Colors.black.withValues(alpha: 0.8),
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.all(40),
+                      decoration: BoxDecoration(
+                        color: Colors.blueGrey.shade900,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.white, width: 2),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text('GAME PAUSED', style: TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 30),
+                          ElevatedButton.icon(
+                            icon: const Icon(Icons.play_arrow, color: Colors.black),
+                            label: const Text('RESUME', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                            style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15)),
+                            onPressed: () {
+                              game.overlays.remove('PauseMenu');
+                              game.resumeEngine();
+                            },
+                          ),
+                          const SizedBox(height: 15),
+                          ElevatedButton.icon(
+                            icon: const Icon(Icons.exit_to_app, color: Colors.black),
+                            label: const Text('LEAVE GAME', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.black, padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15)),
+                            onPressed: () {
+                              game.overlays.remove('PauseMenu');
+                              game.resumeEngine();
+                              game.isPlayingNotifier.value = false;
+                              ScoreManager.saveScore(game.gameTitle, game.score);
+                              game.isGameOver = true;
+                              game.overlays.add('MainMenu');
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+              'LeaderboardMenu': (context, BaseJestureGame game) {
+                return FutureBuilder<List<int>>(
+                  future: ScoreManager.getScores(game.gameTitle),
+                  builder: (context, snapshot) {
+                    List<int> scores = snapshot.data ?? [];
+                    return Container(
+                      color: Colors.black.withValues(alpha: 0.9),
+                      child: Center(
+                        child: Container(
+                          width: 320,
+                          padding: const EdgeInsets.all(30),
+                          decoration: BoxDecoration(
+                            color: Colors.blueGrey.shade900,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: Colors.amberAccent, width: 2),
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text('${game.gameTitle} Top Scores', style: const TextStyle(color: Colors.amberAccent, fontSize: 24, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+                              const SizedBox(height: 20),
+                              if (scores.isEmpty)
+                                const Text('No scores yet!', style: TextStyle(color: Colors.white70, fontSize: 18))
+                              else
+                                ...scores.asMap().entries.map((entry) {
+                                  return Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 4.0),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text('#${entry.key + 1}', style: const TextStyle(color: Colors.white70, fontSize: 18)),
+                                        Text('${entry.value}', style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                                      ],
+                                    ),
+                                  );
+                                }),
+                              const SizedBox(height: 30),
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black),
+                                onPressed: () {
+                                  game.overlays.remove('LeaderboardMenu');
+                                  game.overlays.add('MainMenu');
+                                },
+                                child: const Text('BACK', style: TextStyle(fontWeight: FontWeight.bold)),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
             },
             initialActiveOverlays: [_initialOverlay],
           ),
@@ -555,7 +727,7 @@ class _GameScreenState extends State<GameScreen> {
           ),
         ],
       ),
-    );
+    ));
   }
 }
 
