@@ -10,6 +10,9 @@ import 'base_jesture_game.dart';
 enum BallType { standard, fast, golden }
 
 class MotionGameArena extends BaseJestureGame {
+  @override
+  String get gameTitle => 'Fall Ball';
+
   double _spawnTimer = 0.0;
 
   MotionGameArena();
@@ -149,8 +152,8 @@ class TargetBall extends PositionComponent with CollisionCallbacks {
     
     position += (velocity * mult) * dt;
     
-    if (position.y > 1500) {
-      if (game != null) game.onBallMissed();
+    if (game != null && position.y > game.size.y + radius) {
+      game.onBallMissed();
       removeFromParent();
     }
   }

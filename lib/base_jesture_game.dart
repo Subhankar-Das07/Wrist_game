@@ -6,15 +6,23 @@ import 'package:flame/effects.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
+import 'score_manager.dart';
 
 abstract class BaseJestureGame extends FlameGame with HasCollisionDetection {
-  late final TextComponent livesText;
-  late final TextComponent scoreText;
+  final ValueNotifier<int> scoreNotifier = ValueNotifier<int>(0);
+  final ValueNotifier<int> livesNotifier = ValueNotifier<int>(20);
   
-  int score = 0;
-  int lives = 20;
+  int get score => scoreNotifier.value;
+  set score(int value) => scoreNotifier.value = value;
+  
+  int get lives => livesNotifier.value;
+  set lives(int value) => livesNotifier.value = value;
+
   double speedMultiplier = 1.0;
   bool isGameOver = true;
+  final ValueNotifier<bool> isPlayingNotifier = ValueNotifier<bool>(false);
+
+  String get gameTitle;
 
   bool isDistanceValidating = false;
   final ValueNotifier<String> distanceStatusNotifier = ValueNotifier<String>('Searching...');
@@ -39,31 +47,7 @@ abstract class BaseJestureGame extends FlameGame with HasCollisionDetection {
   Future<void> onLoad() async {
     super.onLoad();
 
-    final scoreBg = RectangleComponent(
-      position: Vector2(20, 30),
-      size: Vector2(150, 50),
-      paint: Paint()..color = Colors.black.withValues(alpha: 0.6),
-    );
-    scoreText = TextComponent(
-      text: '★ 0',
-      position: Vector2(10, 10),
-      textRenderer: TextPaint(style: const TextStyle(color: Colors.yellowAccent, fontSize: 28, fontWeight: FontWeight.bold)),
-    );
-    scoreBg.add(scoreText);
-
-    final livesBg = RectangleComponent(
-      position: Vector2(size.x - 170, 30),
-      size: Vector2(150, 50),
-      paint: Paint()..color = Colors.black.withValues(alpha: 0.6),
-    );
-    livesText = TextComponent(
-      text: '❤️ 20',
-      position: Vector2(10, 10),
-      textRenderer: TextPaint(style: const TextStyle(color: Colors.redAccent, fontSize: 28, fontWeight: FontWeight.bold)),
-    );
-    livesBg.add(livesText);
-
-    addAll([scoreBg, livesBg, leftFist, rightFist]);
+    addAll([leftFist, rightFist]);
   }
 
   void startDistanceValidation() {
@@ -95,6 +79,7 @@ abstract class BaseJestureGame extends FlameGame with HasCollisionDetection {
 
   void startGame() {
     isGameOver = false;
+    isPlayingNotifier.value = true;
     
     // Flash Visual Effect
     final flash = RectangleComponent(
@@ -111,18 +96,16 @@ abstract class BaseJestureGame extends FlameGame with HasCollisionDetection {
   }
 
   void resetGame() {
+    isPlayingNotifier.value = false;
     lives = 20;
     speedMultiplier = 1.0;
     score = 0;
-    scoreText.text = '★ 0';
-    livesText.text = '❤️ 20';
     clearArena();
     startCountdown();
   }
   
   void resumeFromAd() {
     lives = 20;
-    livesText.text = '❤️ 20';
     clearArena();
     startCountdown();
   }
@@ -133,11 +116,12 @@ abstract class BaseJestureGame extends FlameGame with HasCollisionDetection {
   void onBallMissed() {
     if (isGameOver) return;
     lives--;
-    livesText.text = '❤️ $lives';
     HapticFeedback.vibrate();
     
     if (lives <= 0) {
       isGameOver = true;
+      isPlayingNotifier.value = false;
+      ScoreManager.saveScore(gameTitle, score);
       overlays.add('GameOver');
     }
   }
@@ -149,9 +133,9 @@ abstract class BaseJestureGame extends FlameGame with HasCollisionDetection {
       
       if (leftShoulder != null && rightShoulder != null && leftShoulder.likelihood > 0.5 && rightShoulder.likelihood > 0.5) {
         double shoulderDist = (leftShoulder.x - rightShoulder.x).abs() / inputWidth;
-        if (shoulderDist < 0.15) {
+        if (shoulderDist < 0.12) {
           distanceStatusNotifier.value = 'Move Closer';
-        } else if (shoulderDist > 0.35) {
+        } else if (shoulderDist > 0.50) {
           distanceStatusNotifier.value = 'Move Further Back';
         } else {
           distanceStatusNotifier.value = 'Perfect! Hold still...';
@@ -191,7 +175,6 @@ abstract class BaseJestureGame extends FlameGame with HasCollisionDetection {
   
   void incrementScore(int addedPoints) {
     score += addedPoints;
-    scoreText.text = '★ $score';
     HapticFeedback.lightImpact();
   }
 
@@ -262,13 +245,14 @@ class FistTrackerComponent extends PositionComponent with CollisionCallbacks {
     }
 
     final double distance = _smoothedPosition.distanceTo(targetPosition);
-    final double maxMovePerFrame = 200.0; 
+    final double maxMovePerFrame = 10000.0 * dt; 
     
     if (distance > maxMovePerFrame) {
       final direction = (targetPosition - _smoothedPosition).normalized();
       _smoothedPosition += direction * maxMovePerFrame;
     } else {
-      _smoothedPosition.lerp(targetPosition, 0.4); 
+      final double lerpFactor = 1.0 - exp(-25.0 * dt);
+      _smoothedPosition.lerp(targetPosition, lerpFactor); 
     }
     
     position = _smoothedPosition.clone();
