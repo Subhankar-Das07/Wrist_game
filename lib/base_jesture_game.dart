@@ -5,8 +5,8 @@ import 'package:flame/collisions.dart';
 import 'package:flame/effects.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 import 'score_manager.dart';
+import 'sound_manager.dart';
 
 abstract class BaseJestureGame extends FlameGame with HasCollisionDetection {
   final ValueNotifier<int> scoreNotifier = ValueNotifier<int>(0);
@@ -22,22 +22,39 @@ abstract class BaseJestureGame extends FlameGame with HasCollisionDetection {
   bool isGameOver = true;
   final ValueNotifier<bool> isPlayingNotifier = ValueNotifier<bool>(false);
 
+  VoidCallback? onGameStartRequested;
+  VoidCallback? onGameEndRequested;
+
   String get gameTitle;
 
+  int get requiredHandsCount => 2;
+  String get distanceValidationTitle => 'HAND DETECTION';
+  String get distanceValidationInstruction => requiredHandsCount == 1
+      ? 'Raise ONE hand so the camera can see your Electric Racket.'
+      : 'Raise BOTH hands so the camera can see them clearly.';
+
+  // Distance validation: tracks whether required hands are visible
   bool isDistanceValidating = false;
   final ValueNotifier<String> distanceStatusNotifier = ValueNotifier<String>('Searching...');
-  double goodDistanceTimer = 0.0;
+  double bothHandsVisibleTimer = 0.0;
+
+  // Stores latest raw fist X positions from MediaPipe (normalized 0–1, or -1 if not detected)
+  double _rawLeftX = -1;
+  double _rawRightX = -1;
 
   final ValueNotifier<int> countdownNotifier = ValueNotifier<int>(0);
   TimerComponent? countdownTimerComp;
 
-  late final FistTrackerComponent leftFist;
-  late final FistTrackerComponent rightFist;
+  late FistTrackerComponent leftFist;
+  late FistTrackerComponent rightFist;
   final Random random = Random();
 
-  BaseJestureGame() {
-    leftFist = FistTrackerComponent(Colors.blueAccent);
-    rightFist = FistTrackerComponent(Colors.redAccent);
+  BaseJestureGame({
+    FistTrackerComponent? customLeftFist,
+    FistTrackerComponent? customRightFist,
+  }) {
+    leftFist = customLeftFist ?? FistTrackerComponent(Colors.blueAccent);
+    rightFist = customRightFist ?? FistTrackerComponent(Colors.redAccent);
   }
 
   @override
@@ -46,30 +63,84 @@ abstract class BaseJestureGame extends FlameGame with HasCollisionDetection {
   @override
   Future<void> onLoad() async {
     super.onLoad();
-
     addAll([leftFist, rightFist]);
   }
 
+  /// Displays exclusively the specified overlay, removing all other competing menus.
+  /// Pass `null` to clear all overlays (e.g. during active gameplay).
+  void showOnlyOverlay(String? overlayName) {
+    const allOverlays = [
+      'MainMenu',
+      'DistanceValidation',
+      'Countdown',
+      'PauseMenu',
+      'GameOver',
+      'Paywall',
+      'LeaderboardMenu',
+    ];
+    for (final name in allOverlays) {
+      if (name != overlayName) {
+        overlays.remove(name);
+      }
+    }
+    if (overlayName != null && !overlays.isActive(overlayName)) {
+      overlays.add(overlayName);
+    }
+  }
+
   void startDistanceValidation() {
+    isGameOver = false;
+    isPlayingNotifier.value = false;
     isDistanceValidating = true;
-    goodDistanceTimer = 0.0;
-    distanceStatusNotifier.value = 'Analyzing pose...';
-    overlays.add('DistanceValidation');
+    score = 0;
+    lives = 20;
+    speedMultiplier = 1.0;
+    clearArena();
+    _rawLeftX = -1;
+    _rawRightX = -1;
+    leftFist.targetPosition = Vector2(-2000, -2000);
+    rightFist.targetPosition = Vector2(-2000, -2000);
+    bothHandsVisibleTimer = 0.0;
+    distanceStatusNotifier.value = requiredHandsCount == 1
+        ? 'Raise your hand to camera...'
+        : 'Show both hands to camera...';
+    
+    // Stop and remove any existing countdown timer
+    countdownTimerComp?.timer.stop();
+    if (countdownTimerComp != null && countdownTimerComp!.isMounted) {
+      remove(countdownTimerComp!);
+    }
+    countdownTimerComp = null;
+
+    showOnlyOverlay('DistanceValidation');
+    resumeEngine();
+
+    onGameStartRequested?.call();
   }
 
   void startCountdown() {
+    resumeEngine();
     countdownNotifier.value = 5;
-    overlays.add('Countdown');
+    
+    countdownTimerComp?.timer.stop();
+    if (countdownTimerComp != null && countdownTimerComp!.isMounted) {
+      remove(countdownTimerComp!);
+    }
+    
+    showOnlyOverlay('Countdown');
     
     countdownTimerComp = TimerComponent(
       period: 1.0,
       repeat: true,
       onTick: () {
+        SoundManager.instance.playCountdownTick();
         countdownNotifier.value--;
         if (countdownNotifier.value <= 0) {
           countdownTimerComp?.timer.stop();
-          if (countdownTimerComp != null) remove(countdownTimerComp!);
-          overlays.remove('Countdown');
+          if (countdownTimerComp != null && countdownTimerComp!.isMounted) {
+            remove(countdownTimerComp!);
+          }
+          countdownTimerComp = null;
           startGame();
         }
       }
@@ -80,12 +151,14 @@ abstract class BaseJestureGame extends FlameGame with HasCollisionDetection {
   void startGame() {
     isGameOver = false;
     isPlayingNotifier.value = true;
+    showOnlyOverlay(null);
+    resumeEngine();
     
-    // Flash Visual Effect
+    // Flash visual effect
     final flash = RectangleComponent(
       size: size,
       paint: Paint()..color = Colors.white,
-      priority: 100, // Ensure it's on top
+      priority: 100,
     );
     flash.add(OpacityEffect.fadeOut(
       LinearEffectController(0.8),
@@ -97,10 +170,16 @@ abstract class BaseJestureGame extends FlameGame with HasCollisionDetection {
 
   void resetGame() {
     isPlayingNotifier.value = false;
+    isDistanceValidating = false;
     lives = 20;
     speedMultiplier = 1.0;
     score = 0;
     clearArena();
+    _rawLeftX = -1;
+    _rawRightX = -1;
+    leftFist.targetPosition = Vector2(-2000, -2000);
+    rightFist.targetPosition = Vector2(-2000, -2000);
+    onGameStartRequested?.call();
     startCountdown();
   }
   
@@ -110,7 +189,6 @@ abstract class BaseJestureGame extends FlameGame with HasCollisionDetection {
     startCountdown();
   }
 
-  // To be implemented by subclasses to remove game-specific elements
   void clearArena();
 
   void onBallMissed() {
@@ -122,52 +200,53 @@ abstract class BaseJestureGame extends FlameGame with HasCollisionDetection {
       isGameOver = true;
       isPlayingNotifier.value = false;
       ScoreManager.saveScore(gameTitle, score);
-      overlays.add('GameOver');
+      SoundManager.instance.playGameOver();
+      showOnlyOverlay('GameOver');
+      onGameEndRequested?.call();
     }
   }
 
-  void updateFullPose(Pose pose, double scale, double offsetX, double offsetY, double inputWidth) {
+  /// Called from main.dart every time MediaPipe sends a new hand detection result.
+  /// [leftX], [leftY]: user's left hand fist center, normalized 0–1 (-1 = not detected)
+  /// [rightX], [rightY]: user's right hand fist center, normalized 0–1 (-1 = not detected)
+  void updateFistPositions(double leftX, double leftY, double rightX, double rightY) {
+    _rawLeftX = leftX;
+    _rawRightX = rightX;
+
+    // During distance validation: check required hands count
     if (isDistanceValidating) {
-      final leftShoulder = pose.landmarks[PoseLandmarkType.leftShoulder];
-      final rightShoulder = pose.landmarks[PoseLandmarkType.rightShoulder];
-      
-      if (leftShoulder != null && rightShoulder != null && leftShoulder.likelihood > 0.5 && rightShoulder.likelihood > 0.5) {
-        double shoulderDist = (leftShoulder.x - rightShoulder.x).abs() / inputWidth;
-        if (shoulderDist < 0.12) {
-          distanceStatusNotifier.value = 'Move Closer';
-        } else if (shoulderDist > 0.50) {
-          distanceStatusNotifier.value = 'Move Further Back';
-        } else {
+      if (requiredHandsCount == 1) {
+        bool oneVisible = (leftX >= 0 || rightX >= 0);
+        if (oneVisible) {
           distanceStatusNotifier.value = 'Perfect! Hold still...';
+        } else {
+          distanceStatusNotifier.value = 'No hands detected';
         }
       } else {
-        distanceStatusNotifier.value = 'Searching for body...';
+        bool bothVisible = (leftX >= 0 && rightX >= 0);
+        if (bothVisible) {
+          distanceStatusNotifier.value = 'Perfect! Hold still...';
+        } else if (leftX >= 0 || rightX >= 0) {
+          distanceStatusNotifier.value = 'Show both hands...';
+        } else {
+          distanceStatusNotifier.value = 'No hands detected';
+        }
       }
-      return; 
+      return;
     }
 
     if (isGameOver) return;
-    
-    final leftWrist = pose.landmarks[PoseLandmarkType.leftWrist];
-    final leftIndex = pose.landmarks[PoseLandmarkType.leftIndex];
-    if (leftWrist != null && leftIndex != null && leftWrist.likelihood > 0.4 && leftIndex.likelihood > 0.4) {
-      double fistX = (leftWrist.x + leftIndex.x) / 2;
-      double fistY = (leftWrist.y + leftIndex.y) / 2;
-      double scaledX = (inputWidth - fistX) * scale - offsetX;
-      double scaledY = fistY * scale - offsetY;
-      leftFist.targetPosition = Vector2(scaledX, scaledY);
+
+    // Map normalized coordinates to game canvas coordinates
+    // leftX is already mirrored correctly by the Kotlin layer
+    if (leftX >= 0 && leftY >= 0) {
+      leftFist.targetPosition = Vector2(leftX * size.x, leftY * size.y);
     } else {
       leftFist.targetPosition = Vector2(-2000, -2000);
     }
-    
-    final rightWrist = pose.landmarks[PoseLandmarkType.rightWrist];
-    final rightIndex = pose.landmarks[PoseLandmarkType.rightIndex];
-    if (rightWrist != null && rightIndex != null && rightWrist.likelihood > 0.4 && rightIndex.likelihood > 0.4) {
-      double fistX = (rightWrist.x + rightIndex.x) / 2;
-      double fistY = (rightWrist.y + rightIndex.y) / 2;
-      double scaledX = (inputWidth - fistX) * scale - offsetX;
-      double scaledY = fistY * scale - offsetY;
-      rightFist.targetPosition = Vector2(scaledX, scaledY);
+
+    if (rightX >= 0 && rightY >= 0) {
+      rightFist.targetPosition = Vector2(rightX * size.x, rightY * size.y);
     } else {
       rightFist.targetPosition = Vector2(-2000, -2000);
     }
@@ -176,31 +255,38 @@ abstract class BaseJestureGame extends FlameGame with HasCollisionDetection {
   void incrementScore(int addedPoints) {
     score += addedPoints;
     HapticFeedback.lightImpact();
+    SoundManager.instance.playPunch();
   }
 
   @override
   void update(double dt) {
     super.update(dt);
+
+    // Distance validation timer: auto-start countdown once required hands are held still
     if (isDistanceValidating) {
-      if (distanceStatusNotifier.value == 'Perfect! Hold still...') {
-        goodDistanceTimer += dt;
-        if (goodDistanceTimer >= 3.0) {
+      final bool valid = requiredHandsCount == 1
+          ? (_rawLeftX >= 0 || _rawRightX >= 0)
+          : (_rawLeftX >= 0 && _rawRightX >= 0);
+      if (valid) {
+        bothHandsVisibleTimer += dt;
+        final double targetWait = requiredHandsCount == 1 ? 1.5 : 2.2;
+        if (bothHandsVisibleTimer >= targetWait) {
           isDistanceValidating = false;
-          overlays.remove('DistanceValidation');
+          showOnlyOverlay('Countdown');
           startCountdown();
         }
       } else {
-        goodDistanceTimer = 0.0;
+        bothHandsVisibleTimer = 0.0;
       }
-      return;
     }
   }
 }
 
 class FistTrackerComponent extends PositionComponent with CollisionCallbacks {
-  final double radius = 30.0;
+  final double radius = 32.0;
   late final Paint _corePaint;
   late final Paint _glowPaint;
+  late final Paint _ringPaint;
   
   Vector2 targetPosition = Vector2(-2000, -2000);
   Vector2 _smoothedPosition = Vector2(-2000, -2000);
@@ -214,9 +300,14 @@ class FistTrackerComponent extends PositionComponent with CollisionCallbacks {
       ..style = PaintingStyle.fill;
       
     _glowPaint = Paint()
-      ..color = color.withOpacity(0.8)
+      ..color = color.withValues(alpha: 0.6)
       ..style = PaintingStyle.fill
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 15.0);
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 16.0);
+
+    _ringPaint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3.5;
       
     position = targetPosition.clone();
     _smoothedPosition = targetPosition.clone();
@@ -232,12 +323,14 @@ class FistTrackerComponent extends PositionComponent with CollisionCallbacks {
   void update(double dt) {
     super.update(dt);
     
+    // If hand not detected, move off-screen instantly
     if (targetPosition.x == -2000) {
       position = targetPosition.clone();
       _smoothedPosition = targetPosition.clone();
       return;
     }
     
+    // Teleport on first detection (was off-screen)
     if (_smoothedPosition.x == -2000) {
       _smoothedPosition = targetPosition.clone();
       position = _smoothedPosition.clone();
@@ -245,24 +338,27 @@ class FistTrackerComponent extends PositionComponent with CollisionCallbacks {
     }
 
     final double distance = _smoothedPosition.distanceTo(targetPosition);
-    final double maxMovePerFrame = 10000.0 * dt; 
-    
-    if (distance > maxMovePerFrame) {
-      final direction = (targetPosition - _smoothedPosition).normalized();
-      _smoothedPosition += direction * maxMovePerFrame;
-    } else {
-      final double lerpFactor = 1.0 - exp(-25.0 * dt);
-      _smoothedPosition.lerp(targetPosition, lerpFactor); 
+
+    // Deadband anti-jitter filter: ignore micro-tremors (< 4px)
+    if (distance < 4.0) {
+      position = _smoothedPosition.clone();
+      return;
     }
+
+    // Adaptive smoothing: ultra-responsive on punches (>40px), rock-steady when holding still
+    final double responsiveness = distance > 40.0 ? 32.0 : 18.0;
+    final double lerpFactor = (1.0 - exp(-responsiveness * dt)).clamp(0.0, 1.0);
+    _smoothedPosition.lerp(targetPosition, lerpFactor);
     
     position = _smoothedPosition.clone();
   }
 
   @override
   void render(Canvas canvas) {
-    if (position.x == -2000) return; 
+    if (position.x == -2000) return;
     final center = Offset(radius, radius);
     canvas.drawCircle(center, radius + 10, _glowPaint);
     canvas.drawCircle(center, radius, _corePaint);
+    canvas.drawCircle(center, radius, _ringPaint);
   }
 }
