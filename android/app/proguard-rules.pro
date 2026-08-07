@@ -1,16 +1,40 @@
-# WorkManager
+# App classes
+-keep class com.subhankardas.jesture.** { *; }
+-keep interface com.subhankardas.jesture.** { *; }
+
+# Razorpay
+-keep class com.razorpay.** { *; }
+-dontwarn com.razorpay.**
+
+# MediaPipe Tasks, Vision, Framework & Native Loaders
+-keep class com.google.mediapipe.** { *; }
+-keep class com.google.mediapipe.tasks.** { *; }
+-keep class com.google.mediapipe.framework.** { *; }
+-dontwarn com.google.mediapipe.**
+
+# Protobuf
+-keep class com.google.protobuf.** { *; }
+-keepclassmembers class * extends com.google.protobuf.GeneratedMessageLite { *; }
+-keep class com.google.common.** { *; }
+-dontwarn com.google.protobuf.**
+-dontwarn com.google.common.**
+
+# CameraX
+-keep class androidx.camera.** { *; }
+-dontwarn androidx.camera.**
+
+# WorkManager & Startup
 -keep class androidx.work.** { *; }
 -keep class androidx.startup.** { *; }
 
-# Google ML Kit Rules
--keep class com.google.mlkit.** { *; }
--dontwarn com.google.mlkit.**
+# Flutter Engine & Plugins
+-keep class io.flutter.** { *; }
+-keep class io.flutter.plugins.** { *; }
 
-# Google Play Services
--keepnames class com.google.android.gms.** { *; }
-
-# Keep native methods for ML Kit
+# Native methods
 -keepclasseswithmembernames class * {
     native <methods>;
 }
--keep class androidx.startup.** { *; }
+
+# Preserve stack traces and annotations for reflection
+-keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod,SourceFile,LineNumberTable
