@@ -854,6 +854,15 @@ class TomJerrySwatterComponent extends FistTrackerComponent {
     ));
   }
 
+  @override
+  void onGameResize(Vector2 size) {
+    super.onGameResize(size);
+    // Dynamic screen-size scaling: scales down on smaller phones, max size on tablets.
+    // Minimum scale 0.65 ensures it remains a big bat and doesn't become tiny like a fist.
+    final double scaleFactor = (size.x / 750.0).clamp(0.65, 1.0);
+    scale = Vector2.all(scaleFactor);
+  }
+
   void triggerShockZap() {
     _zapShockTimer = 0.28;
   }

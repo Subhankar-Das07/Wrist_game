@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
+import 'weapon_painters.dart';
 import 'package:camera/camera.dart';
 import 'package:flame/game.dart' hide Plane;
 import 'base_jesture_game.dart';
@@ -70,6 +71,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   bool _isStartingCamera = false;
   bool _wasPlayingWhenPaused = false; // tracks if game was active when app went to background
   Uint8List? _frameBuffer;
+  int _lastProcessTime = 0;
 
   CameraDescription? _frontCamera;
   final ValueNotifier<CameraController?> _cameraNotifier = ValueNotifier<CameraController?>(null);
@@ -210,6 +212,12 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
 
   void _processCameraFrame(CameraImage image) {
     if (_isProcessingFrame) return;
+
+    // Throttle frame processing to max 15 FPS (~66ms) to save CPU & battery on older devices
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastProcessTime < 66) return;
+    _lastProcessTime = now;
+
     _isProcessingFrame = true;
 
     try {
@@ -611,7 +619,12 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                                           ),
                                           onPressed: () {
                                             _wasPlayingWhenPaused = false;
-                                            game.startDistanceValidation();
+                                            // Fall Ball shows weapon chooser; Hit Bugs goes direct
+                                            if (game is MotionGameArena) {
+                                              game.showOnlyOverlay('WeaponSelector');
+                                            } else {
+                                              game.startDistanceValidation();
+                                            }
                                           },
                                           child: const Text('START GAME', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
                                         ),
@@ -672,6 +685,9 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                               ),
                             ],
                           );
+                        },
+                        'WeaponSelector': (context, BaseJestureGame game) {
+                          return _buildWeaponSelectorOverlay(context, game);
                         },
                         'DistanceValidation': (context, BaseJestureGame game) {
                           final bool isBugs = game is HitBugsArena;
@@ -952,6 +968,232 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
           ),
         ),
       ),
+    );
+  }
+
+  // ─── Weapon Selector Overlay ─────────────────────────────────────────────────
+  Widget _buildWeaponSelectorOverlay(BuildContext context, BaseJestureGame game) {
+    final motionGame = game as MotionGameArena;
+    WeaponType selected = motionGame.selectedWeapon;
+
+    final List<Map<String, dynamic>> weapons = [
+      {
+        'type': WeaponType.boxing,
+        'name': 'Boxing Gloves',
+        'desc': 'Classic power punches',
+        'emoji': '🥊',
+        'image': 'assets/images/boxing.webp',
+        'leftColor': const Color(0xFF1565C0),
+        'rightColor': const Color(0xFFB71C1C),
+        'glowColor': Colors.cyanAccent,
+      },
+      {
+        'type': WeaponType.barbie,
+        'name': 'Barbie Gloves',
+        'desc': 'Sparkle & style',
+        'emoji': '💅',
+        'image': 'assets/images/barbie.webp',
+        'leftColor': const Color(0xFFFF1493),
+        'rightColor': const Color(0xFFFF1493),
+        'glowColor': Colors.pinkAccent,
+      },
+      {
+        'type': WeaponType.ironMan,
+        'name': 'Iron Man',
+        'desc': 'Arc reactor power!',
+        'emoji': '🤖',
+        'image': 'assets/images/ironman.jpg',
+        'leftColor': const Color(0xFFB71C1C),
+        'rightColor': const Color(0xFFFFD700),
+        'glowColor': Colors.amberAccent,
+      },
+    ];
+
+    return StatefulBuilder(
+      builder: (context, setLocalState) {
+        return Scaffold(
+          backgroundColor: Colors.black.withValues(alpha: 0.8),
+          body: SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                child: Container(
+                  width: 380,
+                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0D1B2A),
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: Colors.cyanAccent.withValues(alpha: 0.7), width: 2),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.cyanAccent.withValues(alpha: 0.25),
+                    blurRadius: 28,
+                    spreadRadius: 2,
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Header
+                  const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text('⚔️', style: TextStyle(fontSize: 24)),
+                      SizedBox(width: 8),
+                      Text(
+                        'CHOOSE YOUR WEAPON',
+                        style: TextStyle(
+                          color: Colors.cyanAccent,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Pick the hands you\'ll fight with',
+                    style: TextStyle(color: Colors.white54, fontSize: 13),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Weapon cards (horizontal scroll for small screens)
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: weapons.map((w) {
+                        final WeaponType wType = w['type'] as WeaponType;
+                        final bool isSelected = selected == wType;
+                        final Color glowColor = w['glowColor'] as Color;
+
+                        return GestureDetector(
+                          onTap: () {
+                            setLocalState(() {
+                              selected = wType;
+                            });
+                          },
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            width: 96,
+                            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? glowColor.withValues(alpha: 0.12)
+                                  : Colors.white.withValues(alpha: 0.04),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: isSelected ? glowColor : Colors.white24,
+                                width: isSelected ? 2.2 : 1,
+                              ),
+                              boxShadow: isSelected
+                                  ? [BoxShadow(color: glowColor.withValues(alpha: 0.4), blurRadius: 14)]
+                                  : [],
+                            ),
+                            child: Column(
+                              children: [
+                                // Weapon preview using CustomPaint
+                                SizedBox(
+                                  width: 70,
+                                  height: 80,
+                                  child: CustomPaint(painter: WeaponPreviewPainter(w['type'])),
+                                ),
+                                const SizedBox(height: 8),
+                                // Emoji badge
+                                Text(w['emoji'] as String, style: const TextStyle(fontSize: 20)),
+                                const SizedBox(height: 4),
+                                // Name
+                                Text(
+                                  w['name'] as String,
+                                  style: TextStyle(
+                                    color: isSelected ? Colors.white : Colors.white70,
+                                    fontSize: 11,
+                                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                                const SizedBox(height: 2),
+                                // Description
+                                Text(
+                                  w['desc'] as String,
+                                  style: const TextStyle(color: Colors.white38, fontSize: 10),
+                                  textAlign: TextAlign.center,
+                                ),
+                                if (isSelected) ...[
+                                  const SizedBox(height: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: glowColor.withValues(alpha: 0.25),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      'SELECTED',
+                                      style: TextStyle(
+                                        color: glowColor,
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 1,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        );
+                      }).map((widget) => Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: widget,
+                      )).toList(),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // FIGHT Button
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      icon: const Text('⚡', style: TextStyle(fontSize: 18)),
+                      label: const Text(
+                        'READY? FIGHT!',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 1.2),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.cyanAccent,
+                        foregroundColor: Colors.black,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        elevation: 8,
+                      ),
+                      onPressed: () {
+                        motionGame.applyWeapon(selected);
+                        motionGame.startDistanceValidation();
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Back link
+                  TextButton(
+                    onPressed: () {
+                      game.showOnlyOverlay('MainMenu');
+                    },
+                    child: const Text(
+                      '← Back to Menu',
+                      style: TextStyle(color: Colors.white38, fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
