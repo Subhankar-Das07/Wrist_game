@@ -5,11 +5,15 @@ import 'package:flame/particles.dart';
 import 'package:flame/collisions.dart';
 import 'package:flutter/material.dart';
 
+import 'weapon_painters.dart';
 import 'base_jesture_game.dart';
 import 'sound_manager.dart';
 
 // 4 ball types — clean, fun, hittable
 enum BallType { green, golden, redMini, bounce }
+
+// ─── Weapon types selectable before each game ─────────────────────────────────
+enum WeaponType { boxing, barbie, ironMan }
 
 class MotionGameArena extends BaseJestureGame {
   @override
@@ -20,7 +24,42 @@ class MotionGameArena extends BaseJestureGame {
   bool _introShownBounce = false;
   bool _introShownRedMini = false;
 
+  WeaponType selectedWeapon = WeaponType.boxing;
+
   MotionGameArena();
+
+  /// Swaps the fist weapon components to the selected weapon type.
+  /// Call this before startDistanceValidation() to apply the chosen weapon.
+  void applyWeapon(WeaponType type) {
+    selectedWeapon = type;
+
+    // Remove existing fist components from the game world if they have a parent
+    if (leftFist.parent != null) leftFist.removeFromParent();
+    if (rightFist.parent != null) rightFist.removeFromParent();
+
+    // Build new weapon fists based on selection
+    switch (type) {
+      case WeaponType.boxing:
+        leftFist = BoxingGloveFist(isLeft: true);
+        rightFist = BoxingGloveFist(isLeft: false);
+        break;
+      case WeaponType.barbie:
+        leftFist = BarbieGloveFist(isLeft: true);
+        rightFist = BarbieGloveFist(isLeft: false);
+        break;
+      case WeaponType.ironMan:
+        leftFist = IronManFist(isLeft: true);
+        rightFist = IronManFist(isLeft: false);
+        break;
+    }
+
+    // Reset positions off-screen
+    leftFist.targetPosition = Vector2(-2000, -2000);
+    rightFist.targetPosition = Vector2(-2000, -2000);
+
+    // Add back to the game world
+    addAll([leftFist, rightFist]);
+  }
 
   @override
   void clearArena() {
@@ -416,5 +455,74 @@ class TargetBall extends PositionComponent with CollisionCallbacks {
         },
       ),
     ));
+  }
+}
+
+// ─── 🥊 Boxing Glove Fist ─────────────────────────────────────────────────────
+class BoxingGloveFist extends FistTrackerComponent {
+  final bool isLeft;
+  ui.Image? _cachedImage;
+
+  BoxingGloveFist({required this.isLeft}) : super(Colors.transparent) {
+    size = Vector2(80, 80);
+    anchor = Anchor.center;
+  }
+
+  @override
+  Future<void> onLoad() async {
+    await super.onLoad();
+    _cachedImage = await createBoxingGloveImage(size.x, isLeft: isLeft);
+  }
+
+  @override
+  void render(Canvas canvas) {
+    if (position.x == -2000 || _cachedImage == null) return;
+    canvas.drawImage(_cachedImage!, Offset.zero, Paint());
+  }
+}
+
+// ─── 💅 Barbie Glove Fist ─────────────────────────────────────────────────────
+class BarbieGloveFist extends FistTrackerComponent {
+  final bool isLeft;
+  ui.Image? _cachedImage;
+
+  BarbieGloveFist({required this.isLeft}) : super(Colors.transparent) {
+    size = Vector2(80, 80);
+    anchor = Anchor.center;
+  }
+
+  @override
+  Future<void> onLoad() async {
+    await super.onLoad();
+    _cachedImage = await createBarbieGloveImage(size.x, isLeft: isLeft);
+  }
+
+  @override
+  void render(Canvas canvas) {
+    if (position.x == -2000 || _cachedImage == null) return;
+    canvas.drawImage(_cachedImage!, Offset.zero, Paint());
+  }
+}
+
+// ─── 🦾 Iron Man Fist ─────────────────────────────────────────────────────────
+class IronManFist extends FistTrackerComponent {
+  final bool isLeft;
+  ui.Image? _cachedImage;
+
+  IronManFist({required this.isLeft}) : super(Colors.transparent) {
+    size = Vector2(80, 80);
+    anchor = Anchor.center;
+  }
+
+  @override
+  Future<void> onLoad() async {
+    await super.onLoad();
+    _cachedImage = await createIronManGloveImage(size.x, isLeft: isLeft);
+  }
+
+  @override
+  void render(Canvas canvas) {
+    if (position.x == -2000 || _cachedImage == null) return;
+    canvas.drawImage(_cachedImage!, Offset.zero, Paint());
   }
 }

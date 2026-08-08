@@ -76,7 +76,7 @@ abstract class BaseJestureGame extends FlameGame with HasCollisionDetection {
       'PauseMenu',
       'GameOver',
       'Paywall',
-      'LeaderboardMenu',
+      'WeaponSelector',
     ];
     for (final name in allOverlays) {
       if (name != overlayName) {
